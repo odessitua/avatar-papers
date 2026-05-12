@@ -11,7 +11,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import requests
@@ -25,16 +25,37 @@ logger = logging.getLogger(__name__)
 MAX_TEXT_LEN = 2800
 
 
-def _week_bounds(which: str) -> Tuple[str, str]:
-    """Return (monday, sunday) for 'current' or 'last' week (ISO Mon–Sun)."""
-    today = datetime.utcnow().date()
-    monday = today - timedelta(days=today.weekday())
-    if which == "current":
-        start = monday
-        end = monday + timedelta(days=6)
+def _week_bounds(which: Union[str, int]) -> Tuple[str, str]:
+    """Return (monday, sunday) for the requested week (ISO Mon–Sun).
+
+    Accepts:
+      - 'current' (this week, weeks_ago=0)
+      - 'last'    (previous week, weeks_ago=1)
+      - int N >= 0 (N weeks ago; 0 = current, 1 = last, 2 = two weeks ago, ...)
+      - numeric str ('0', '1', '2', ...) — same as int
+    """
+    if isinstance(which, str):
+        if which == "current":
+            weeks_ago = 0
+        elif which == "last":
+            weeks_ago = 1
+        else:
+            try:
+                weeks_ago = int(which)
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid --week value: {which!r}. "
+                    "Use 'current', 'last', or non-negative integer."
+                ) from e
     else:
-        start = monday - timedelta(days=7)
-        end = monday - timedelta(days=1)
+        weeks_ago = int(which)
+    if weeks_ago < 0:
+        raise ValueError("weeks_ago must be >= 0")
+
+    today = datetime.utcnow().date()
+    this_monday = today - timedelta(days=today.weekday())
+    start = this_monday - timedelta(days=7 * weeks_ago)
+    end = start + timedelta(days=6)
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
 
@@ -298,7 +319,7 @@ def run_slack_weekly(
     webhook_url: str = "",
     bot_token: str = "",
     channel: str = "",
-    week: str = "last",
+    week: Union[str, int] = "last",
     min_score: int = 7,
     confluence_week_url: Optional[str] = None,
 ) -> bool:
@@ -306,7 +327,7 @@ def run_slack_weekly(
     Build and send the weekly report to Slack.
 
     Uses SLACK_WEBHOOK_URL if set; otherwise SLACK_BOT_TOKEN + SLACK_CHANNEL.
-    week: 'last' (previous Mon–Sun) or 'current' (this week).
+    week: 'current' (this week), 'last' (previous), or int N (N weeks ago).
     min_score: only include papers with score >= this (default 7).
     """
     w_start, w_end = _week_bounds(week)

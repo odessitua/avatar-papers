@@ -3,6 +3,7 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Union
 from dotenv import load_dotenv  # type: ignore[import-untyped]
 
 from src.config import Config
@@ -77,6 +78,8 @@ def _parse_all_figures(
     downloaded = table.df[table.df["downloaded"] == "1"]
     to_parse = []
     for _, row in downloaded.iterrows():
+        if row.get("processed") == "1":
+            continue
         if force or load_figures_meta(row["arxiv_id"], figures_dir) is None:
             to_parse.append(row["arxiv_id"])
 
@@ -138,7 +141,7 @@ def main() -> None:
         "command",
         choices=[
             "search", "download", "collect", "sync", "publish", "update",
-            "reparse-figures", "slack-weekly",
+            "reparse-figures", "slack-weekly", "analyze",
         ],
         help="Command to run",
     )
@@ -160,12 +163,36 @@ def main() -> None:
         help="Minimum score for slack-weekly report (default: 7)",
     )
     parser.add_argument(
-        "--week", choices=["last", "current"], default="last",
-        help="Which week to report (used with slack-weekly): last or current",
+        "--week", default="last",
+        help=(
+            "Which week to report (used with slack-weekly): "
+            "'current', 'last', or integer N for N weeks ago "
+            "(0=current, 1=last, 2=two weeks ago, ...). Default: last."
+        ),
     )
     parser.add_argument(
         "--topic", default=None,
         help="Search only this topic (used with search command)",
+    )
+    parser.add_argument(
+        "--arxiv-id", action="append", default=None,
+        help="Restrict 'analyze' to specific arxiv_id(s); repeatable",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Max number of papers to analyze in one run (default: no limit)",
+    )
+    parser.add_argument(
+        "--reanalyze", action="store_true",
+        help="Re-analyze papers even if their .md already exists",
+    )
+    parser.add_argument(
+        "--no-translate", action="store_true",
+        help="Skip RU translation step in 'analyze'",
+    )
+    parser.add_argument(
+        "--model", default=None,
+        help="Override LLM model slug for 'analyze' (e.g. anthropic/claude-sonnet-4.6)",
     )
     args = parser.parse_args()
 
@@ -196,6 +223,15 @@ def main() -> None:
         cmd_reparse_figures(config, table)
     elif args.command == "slack-weekly":
         cmd_slack_weekly(config, table, week=args.week, min_score=args.min_score)
+    elif args.command == "analyze":
+        cmd_analyze(
+            config, table,
+            arxiv_ids=args.arxiv_id,
+            limit=args.limit,
+            reanalyze=args.reanalyze,
+            translate=not args.no_translate,
+            model=args.model,
+        )
 
 
 def cmd_update(config: Config, table: PapersTable) -> None:
@@ -220,6 +256,11 @@ def cmd_update(config: Config, table: PapersTable) -> None:
 
     cmd_search(config, table)
     cmd_download(config, table)
+    if config.openrouter_api_key.strip():
+        cmd_analyze(config, table)
+    else:
+        logger.info("OPENROUTER_API_KEY not set — skipping analyze step")
+    cmd_sync(config, table)
 
     from src.confluence_publisher import ConfluencePublisher
     publisher = ConfluencePublisher(config)
@@ -258,7 +299,7 @@ def _confluence_week_url(config: Config, w_start: str, w_end: str) -> str:
 def cmd_slack_weekly(
     config: Config,
     table: PapersTable,
-    week: str = "last",
+    week: Union[str, int] = "last",
     min_score: int = 7,
 ) -> None:
     """Send weekly papers report (new papers + analysis summaries) to Slack."""
@@ -289,6 +330,109 @@ def cmd_slack_weekly(
         logger.error("Slack weekly report failed")
     else:
         logger.info("Slack weekly report sent successfully")
+
+
+def cmd_analyze(
+    config: Config,
+    table: PapersTable,
+    arxiv_ids: list = None,
+    limit: int = None,
+    reanalyze: bool = False,
+    translate: bool = True,
+    model: str = None,
+) -> None:
+    """Analyze papers via OpenRouter LLM and save EN+RU markdown."""
+    from src.llm_analyzer import LLMClient, analyze_paper
+
+    api_key = config.openrouter_api_key
+    if not api_key.strip():
+        logger.error(
+            "OPENROUTER_API_KEY is not set in .env — get one at https://openrouter.ai"
+        )
+        return
+
+    df = table.df
+    if arxiv_ids:
+        ids_set = {str(x).strip() for x in arxiv_ids}
+        candidates = df[df["arxiv_id"].isin(ids_set)]
+    else:
+        candidates = df[(df["downloaded"] == "1") & (df["processed"] != "1")]
+
+    originals_dir = Path(config.originals_dir)
+    figures_dir = Path(config.figures_dir)
+    analysis_dir = Path(config.analysis_dir)
+    analysis_ru_dir = Path(config.analysis_ru_dir)
+
+    selected = []
+    for _, row in candidates.sort_values("date", ascending=False).iterrows():
+        aid = row["arxiv_id"]
+        pdf_exists = (originals_dir / f"{aid}.pdf").exists()
+        if not pdf_exists:
+            logger.warning("Skip %s: PDF missing", aid)
+            continue
+        en_exists = (analysis_dir / f"{aid}.md").exists()
+        if en_exists and not reanalyze:
+            logger.debug("Skip %s: analysis already exists", aid)
+            continue
+        selected.append(row)
+        if limit and len(selected) >= limit:
+            break
+
+    if not selected:
+        logger.info("Nothing to analyze")
+        return
+
+    logger.info(
+        "Analyze: %d paper(s) selected (model=%s, translate=%s)",
+        len(selected), model or config.llm_model, translate,
+    )
+
+    client = LLMClient(
+        api_key=api_key,
+        base_url=config.openrouter_base_url,
+        model=model or config.llm_model,
+        max_tokens=config.llm_max_tokens,
+        temperature=config.llm_temperature,
+    )
+
+    total_in = total_out = 0
+    failed: list = []
+    for row in selected:
+        aid = row["arxiv_id"]
+        try:
+            stats = analyze_paper(
+                arxiv_id=aid,
+                paper_meta={
+                    "title": row.get("title", ""),
+                    "url": row.get("url", ""),
+                    "date": row.get("date", ""),
+                    "authors": row.get("authors", ""),
+                    "code_url": row.get("code_url", ""),
+                },
+                originals_dir=originals_dir,
+                figures_dir=figures_dir,
+                analysis_dir=analysis_dir,
+                analysis_ru_dir=analysis_ru_dir,
+                client=client,
+                translate_model=config.llm_translate_model,
+                pdf_max_chars=config.pdf_max_chars,
+                skip_translation=not translate,
+            )
+            total_in += stats["en_usage"]["prompt_tokens"] + stats["ru_usage"]["prompt_tokens"]
+            total_out += stats["en_usage"]["completion_tokens"] + stats["ru_usage"]["completion_tokens"]
+        except Exception as e:
+            logger.exception("Failed to analyze %s: %s", aid, e)
+            failed.append(aid)
+
+    table.sync_processed(config.analysis_dir)
+    table.save()
+
+    logger.info(
+        "Analyze done: %d ok, %d failed | tokens in=%d out=%d",
+        len(selected) - len(failed), len(failed), total_in, total_out,
+    )
+    if failed:
+        logger.warning("Failed: %s", ", ".join(failed))
 
 
 if __name__ == "__main__":

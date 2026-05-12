@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 from atlassian import Confluence  # type: ignore[import-untyped]
 
 from src.config import Config
@@ -167,6 +167,37 @@ class ConfluencePublisher:
         en_year_title = year
         ru_year_title = f"{year} (RU)"
 
+        weeks = _group_by_week(year_df)
+        canonical_weeks = [
+            (ws, we, ids) for (ws, we), ids in weeks.items() if ws[:4] == year
+        ]
+        current_year = datetime.utcnow().strftime("%Y")
+        is_current = (year == current_year)
+
+        # Fast path: skip past, fully-locked years entirely (no API calls).
+        # Year content is rebuilt locally and compared with stored hash;
+        # if unchanged, nothing to send to Confluence.
+        if not self._force and not is_current:
+            year_state = self.state.get_year_state(year)
+            cached_en = year_state.get("en_page_id")
+            cached_ru = year_state.get("ru_page_id")
+            cached_hash = year_state.get("hash")
+            all_locked = bool(canonical_weeks) and all(
+                self.state.is_week_locked(year, ws, we)
+                for ws, we, _ in canonical_weeks
+            )
+            if all_locked and cached_en and cached_ru and cached_hash:
+                fresh_year_df = table.df[table.df["date"].str.startswith(year)]
+                table_html = build_papers_table_html(
+                    fresh_year_df, week_urls={}
+                )
+                if PublishState.content_hash(table_html) == cached_hash:
+                    logger.info(
+                        "Year skipped (all weeks locked, table unchanged): %s",
+                        year,
+                    )
+                    return cached_en, cached_ru
+
         en_year_id = self._find_or_create(
             en_year_title, self._papers_page_id, body="<p>Loading...</p>"
         )
@@ -174,10 +205,15 @@ class ConfluencePublisher:
             ru_year_title, self._ru_page_id, body="<p>Loading...</p>"
         )
 
-        weeks = _group_by_week(year_df)
-        for (w_start, w_end), arxiv_ids in weeks.items():
+        for w_start, w_end, arxiv_ids in canonical_weeks:
+            full_arxiv_ids = arxiv_ids
+            if w_start[:4] != w_end[:4]:
+                full_arxiv_ids = table.df[
+                    (table.df["date"] >= w_start)
+                    & (table.df["date"] <= w_end)
+                ]["arxiv_id"].tolist()
             self._publish_week(
-                year, w_start, w_end, arxiv_ids,
+                year, w_start, w_end, full_arxiv_ids,
                 en_year_id, ru_year_id, table,
             )
 
@@ -233,7 +269,7 @@ class ConfluencePublisher:
     ) -> None:
         """Publish/update a single weekly EN+RU page pair."""
         if not self._force and self.state.is_week_locked(year, w_start, w_end):
-            logger.info("Week locked, skipped: %s %s-%s", year, w_start, w_end)
+            logger.debug("Week locked, skipped: %s %s-%s", year, w_start, w_end)
             return
 
         all_papers = table.df[table.df["arxiv_id"].isin(arxiv_ids)]
@@ -325,10 +361,24 @@ class ConfluencePublisher:
     def _find_or_create(
         self, title: str, parent_id: str, body: str = ""
     ) -> str:
-        """Return page ID, creating the page if it doesn't exist."""
+        """Return page ID, creating the page if it doesn't exist.
+
+        Also verifies the existing page's parent matches the expected one —
+        avoids overwriting a same-titled page under a different parent.
+        """
         page = self.confluence.get_page_by_title(self.space, title)
         if page:
-            return str(page["id"])
+            page_id = str(page["id"])
+            full = self.confluence.get_page_by_id(page_id, expand="ancestors")
+            ancestors = full.get("ancestors", []) if full else []
+            ancestor_ids = {str(a["id"]) for a in ancestors}
+            if str(parent_id) in ancestor_ids:
+                return page_id
+            logger.warning(
+                "Page '%s' (id=%s) exists under a different parent; "
+                "will create a new one under %s",
+                title, page_id, parent_id,
+            )
 
         logger.info("Creating page: '%s'", title)
         result = self.confluence.create_page(
@@ -337,6 +387,7 @@ class ConfluencePublisher:
             body=body,
             parent_id=parent_id,
             representation="storage",
+            editor="v2",
         )
         return str(result["id"])
 

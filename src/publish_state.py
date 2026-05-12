@@ -64,6 +64,10 @@ class PublishState:
     def get_year_hash(self, year: str) -> str:
         return self._data.get("years", {}).get(year, {}).get("hash", "")
 
+    def get_year_state(self, year: str) -> Dict[str, Any]:
+        """Return cached year state ({en_page_id, ru_page_id, hash}) or empty dict."""
+        return self._data.get("years", {}).get(year, {})
+
     def set_year(
         self,
         year: str,

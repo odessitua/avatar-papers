@@ -145,3 +145,41 @@ class Config:
     def slack_channel(self) -> str:
         """Slack channel ID (C...) or name (#channel) for weekly reports (from env)."""
         return os.environ.get("SLACK_CHANNEL", "")
+
+    @property
+    def openrouter_api_key(self) -> str:
+        """OpenRouter API key (from env)."""
+        return os.environ.get("OPENROUTER_API_KEY", "")
+
+    @property
+    def openrouter_base_url(self) -> str:
+        return self._data.get("openrouter", {}).get(
+            "base_url", "https://openrouter.ai/api/v1"
+        )
+
+    @property
+    def llm_model(self) -> str:
+        """OpenRouter model slug for paper analysis."""
+        return self._data.get("openrouter", {}).get(
+            "model", "anthropic/claude-sonnet-4.6"
+        )
+
+    @property
+    def llm_translate_model(self) -> str:
+        """OpenRouter model slug for RU translation (defaults to llm_model)."""
+        return self._data.get("openrouter", {}).get(
+            "translate_model", self.llm_model
+        )
+
+    @property
+    def llm_max_tokens(self) -> int:
+        return int(self._data.get("openrouter", {}).get("max_tokens", 8000))
+
+    @property
+    def llm_temperature(self) -> float:
+        return float(self._data.get("openrouter", {}).get("temperature", 0.3))
+
+    @property
+    def pdf_max_chars(self) -> int:
+        """Truncate extracted PDF text to this many characters before sending to LLM."""
+        return int(self._data.get("openrouter", {}).get("pdf_max_chars", 120000))
