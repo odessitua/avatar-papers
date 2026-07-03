@@ -36,9 +36,9 @@ tables to Confluence.
 python main.py update
 ```
 
-Best used as a daily cron job:
+Best used as a daily cron job (see `scripts/daily_update.sh`):
 ```
-0 6 * * * cd /home/oleksiik/avatar-papers && /home/oleksiik/.conda/envs/f2v-3-5/bin/python main.py update >> logs/update.log 2>&1
+0 22 * * * /path/to/avatar-papers/scripts/daily_update.sh
 ```
 
 ---
@@ -132,9 +132,9 @@ python main.py slack-weekly --week last --min-score 6
 
 **Message format in Slack:** A header with the week range (e.g. "Papers: 2026-03-09 — 2026-03-15"), a line like "N papers (score ≥ 7)", then for each paper: clickable title (link to arXiv), score badge, and the Summary paragraph from the analysis.
 
-Run once per week (e.g. Monday morning) via cron:
+Run once per week via cron (see `scripts/weekly_slack.sh`):
 ```
-0 9 * * 1 cd /path/to/avatar-papers && python main.py slack-weekly --week last >> logs/slack.log 2>&1
+0 9 * * 4 /path/to/avatar-papers/scripts/weekly_slack.sh
 ```
 
 ---
@@ -172,7 +172,8 @@ python main.py publish
 ### Daily operation (cron)
 
 ```
-0 6 * * * cd /home/oleksiik/avatar-papers && /home/oleksiik/.conda/envs/f2v-3-5/bin/python main.py update >> logs/update.log 2>&1
+0 22 * * * /path/to/avatar-papers/scripts/daily_update.sh
+0 9 * * 4 /path/to/avatar-papers/scripts/weekly_slack.sh
 ```
 
 ### After analyzing papers

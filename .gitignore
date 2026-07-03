@@ -20,6 +20,7 @@ papers/originals/*.pdf
 data/papers.csv
 data/publish_state.json
 data/*.db
+data/debug/
 
 papers/analysis/
 papers/analysis_ru/
