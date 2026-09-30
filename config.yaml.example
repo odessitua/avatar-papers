@@ -71,9 +71,17 @@ openrouter:
   base_url: "https://openrouter.ai/api/v1"
   model: "openai/gpt-6-luna"
   # translate_model: "openai/gpt-6-luna"  # defaults to model if omitted
+
+llm:
+  provider: "openrouter"  # switch to "bedrock" to use AWS credentials
   max_tokens: 8000
   temperature: 0.3
-  reasoning_effort: "medium"  # OpenRouter reasoning effort: low, medium, high
+  reasoning_effort: "medium"  # none, low, medium, high, xhigh, max
+  pdf_max_chars: 120000
+
+bedrock:
+  model_id: "us.openai.gpt-6-luna"
+  region: "us-east-2"
 
 confluence:
   space_key: "YOUR_SPACE_KEY"

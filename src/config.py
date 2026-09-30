@@ -158,6 +158,24 @@ class Config:
         )
 
     @property
+    def llm_provider(self) -> str:
+        """LLM provider: ``openrouter`` or AWS ``bedrock``."""
+        return self._data.get("llm", {}).get("provider", "openrouter")
+
+    @property
+    def bedrock_model_id(self) -> str:
+        """Bedrock inference profile ID for the configured model."""
+        return self._data.get("bedrock", {}).get(
+            "model_id", "global.openai.gpt-6-luna"
+        )
+
+    @property
+    def bedrock_region(self) -> Optional[str]:
+        """AWS region used for Bedrock, or ``None`` for SDK default."""
+        value = self._data.get("bedrock", {}).get("region")
+        return str(value) if value else None
+
+    @property
     def llm_model(self) -> str:
         """OpenRouter model slug for paper analysis."""
         return self._data.get("openrouter", {}).get(
@@ -173,19 +191,20 @@ class Config:
 
     @property
     def llm_max_tokens(self) -> int:
-        return int(self._data.get("openrouter", {}).get("max_tokens", 8000))
+        """Maximum completion tokens, shared by both providers."""
+        return int(self._data.get("llm", {}).get("max_tokens", 8000))
 
     @property
     def llm_temperature(self) -> float:
-        return float(self._data.get("openrouter", {}).get("temperature", 0.3))
+        """Sampling temperature. Bedrock Luna ignores this field."""
+        return float(self._data.get("llm", {}).get("temperature", 0.3))
 
     @property
-    def llm_reasoning_effort(self) -> Optional[str]:
-        """Reasoning effort sent to OpenRouter, such as ``"medium"``."""
-        value = self._data.get("openrouter", {}).get("reasoning_effort")
-        return str(value) if value else None
+    def llm_reasoning_effort(self) -> str:
+        """Reasoning effort shared by OpenRouter and Bedrock."""
+        return str(self._data.get("llm", {}).get("reasoning_effort", "medium"))
 
     @property
     def pdf_max_chars(self) -> int:
         """Truncate extracted PDF text to this many characters before sending to LLM."""
-        return int(self._data.get("openrouter", {}).get("pdf_max_chars", 120000))
+        return int(self._data.get("llm", {}).get("pdf_max_chars", 120000))

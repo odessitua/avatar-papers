@@ -1,9 +1,9 @@
-"""LLM-based paper analyzer via OpenRouter (OpenAI-compatible API).
+"""LLM-based paper analyzer via OpenRouter or AWS Bedrock.
 
 Pipeline:
   1. Extract text from local PDF (pymupdf).
   2. Load figures captions from papers/figures/{arxiv_id}.json (if any).
-  3. Send a single prompt to LLM (Claude Sonnet 4.6 by default) -> EN markdown.
+  3. Send a single prompt to the configured LLM -> EN markdown.
   4. Send the EN markdown back to LLM for RU translation -> RU markdown.
   5. Save both files; caller updates CSV (processed=1, score, code_url) via sync.
 """
@@ -11,9 +11,12 @@ import json
 import logging
 import re
 import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import boto3  # type: ignore[import-untyped]
 import fitz  # type: ignore[import-untyped]
 from openai import OpenAI  # type: ignore[import-untyped]
 from openai import APIError, APITimeoutError, RateLimitError  # type: ignore[import-untyped]
@@ -154,29 +157,17 @@ Strict rules:
     return [{"role": "user", "content": user}]
 
 
-class LLMClient:
-    """Thin wrapper around OpenAI SDK pointed at OpenRouter."""
+class LLMClient(ABC):
+    """Shared generation settings and retry loop for one LLM provider."""
 
     def __init__(
         self,
-        api_key: str,
-        base_url: str = "https://openrouter.ai/api/v1",
-        model: str = "openai/gpt-6-luna",
+        model_name: str,
         max_tokens: int = 8000,
         temperature: float = 0.3,
-        reasoning_effort: Optional[str] = None,
+        reasoning_effort: str = "medium",
     ) -> None:
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY is empty")
-        self._client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            default_headers={
-                "HTTP-Referer": "https://github.com/avatar-papers",
-                "X-Title": "Avatar Papers Analyzer",
-            },
-        )
-        self.model = model
+        self.model_name = model_name
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
@@ -189,46 +180,233 @@ class LLMClient:
         temperature: Optional[float] = None,
         retries: int = 3,
         retry_delay: float = 5.0,
-    ) -> Tuple[str, Dict]:
-        """Call chat completion. Returns (content, usage_dict)."""
+    ) -> Tuple[str, Dict[str, int]]:
+        """Call the provider and return response text plus token usage.
+
+        ``model``, ``max_tokens`` and ``temperature`` override the client
+        defaults for this call. Retriable provider errors are tried up to
+        ``retries`` times.
+        """
+        resolved_max_tokens = (
+            self.max_tokens if max_tokens is None else max_tokens
+        )
+        resolved_temperature = (
+            self.temperature if temperature is None else temperature
+        )
         last_err: Optional[Exception] = None
         for attempt in range(1, retries + 1):
             try:
-                request_kwargs = {
-                    "model": model or self.model,
-                    "messages": messages,
-                    "max_tokens": max_tokens or self.max_tokens,
-                    "temperature": (
-                        temperature
-                        if temperature is not None
-                        else self.temperature
-                    ),
-                }
-                if self.reasoning_effort:
-                    request_kwargs["extra_body"] = {
-                        "reasoning": {"effort": self.reasoning_effort}
-                    }
-                resp = self._client.chat.completions.create(
-                    **request_kwargs,
+                return self._complete(
+                    messages,
+                    model=model,
+                    max_tokens=resolved_max_tokens,
+                    temperature=resolved_temperature,
                 )
-                choice = resp.choices[0]
-                content = choice.message.content or ""
-                usage = getattr(resp, "usage", None)
-                usage_dict = {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", 0),
-                    "completion_tokens": getattr(usage, "completion_tokens", 0),
-                    "total_tokens": getattr(usage, "total_tokens", 0),
-                }
-                return content.strip(), usage_dict
-            except (RateLimitError, APITimeoutError, APIError) as e:
-                last_err = e
+            except Exception as error:
+                if not self._is_retriable(error):
+                    raise
+                last_err = error
                 logger.warning(
-                    "LLM call failed (attempt %d/%d): %s",
-                    attempt, retries, e,
+                    "%s call failed (attempt %d/%d): %s",
+                    type(self).__name__,
+                    attempt,
+                    retries,
+                    error,
                 )
                 if attempt < retries:
                     time.sleep(retry_delay * attempt)
-        raise RuntimeError(f"LLM call failed after {retries} attempts: {last_err}")
+        raise RuntimeError(
+            f"{type(self).__name__} call failed after {retries} attempts: "
+            f"{last_err}"
+        )
+
+    def _is_retriable(self, error: Exception) -> bool:
+        """Return whether ``error`` should consume one retry."""
+        del error
+        return True
+
+    @abstractmethod
+    def _complete(
+        self,
+        messages: List[Dict],
+        model: Optional[str],
+        max_tokens: int,
+        temperature: float,
+    ) -> Tuple[str, Dict[str, int]]:
+        """Send one provider request and return text plus token usage."""
+
+
+class OpenRouterClient(LLMClient):
+    """OpenAI-compatible chat client pointed at OpenRouter."""
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        max_tokens: int = 8000,
+        temperature: float = 0.3,
+        reasoning_effort: str = "medium",
+    ) -> None:
+        if not api_key:
+            raise ValueError("OPENROUTER_API_KEY is empty")
+        super().__init__(
+            model_name=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+        )
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            default_headers={
+                "HTTP-Referer": "https://github.com/avatar-papers",
+                "X-Title": "Avatar Papers Analyzer",
+            },
+        )
+
+    def _is_retriable(self, error: Exception) -> bool:
+        """Retry rate limits, timeouts and OpenRouter API errors."""
+        return isinstance(error, (RateLimitError, APITimeoutError, APIError))
+
+    def _complete(
+        self,
+        messages: List[Dict],
+        model: Optional[str],
+        max_tokens: int,
+        temperature: float,
+    ) -> Tuple[str, Dict[str, int]]:
+        """Send one OpenRouter chat completion."""
+        response = self._client.chat.completions.create(
+            model=model or self.model_name,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            extra_body={"reasoning": {"effort": self.reasoning_effort}},
+        )
+        choice = response.choices[0]
+        content = choice.message.content or ""
+        usage = getattr(response, "usage", None)
+        return content.strip(), {
+            "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "completion_tokens": int(
+                getattr(usage, "completion_tokens", 0) or 0
+            ),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        }
+
+
+class BedrockClient(LLMClient):
+    """AWS Bedrock Converse client for GPT-6 Luna.
+
+    Luna rejects ``temperature``, so that shared setting is not sent.
+    A per-call ``model`` override is also ignored: Bedrock uses ``model_id``.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        region: Optional[str],
+        max_tokens: int = 8000,
+        temperature: float = 0.3,
+        reasoning_effort: str = "medium",
+    ) -> None:
+        super().__init__(
+            model_name=model_id,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+        )
+        self._client = boto3.client("bedrock-runtime", region_name=region)
+
+    def _complete(
+        self,
+        messages: List[Dict],
+        model: Optional[str],
+        max_tokens: int,
+        temperature: float,
+    ) -> Tuple[str, Dict[str, int]]:
+        """Send one Bedrock Converse request."""
+        del model, temperature
+        response = self._client.converse(
+            modelId=self.model_name,
+            messages=self._to_converse_messages(messages),
+            inferenceConfig={"maxTokens": max_tokens},
+            additionalModelRequestFields={
+                "reasoning": {"effort": self.reasoning_effort}
+            },
+        )
+        content_parts = response["output"]["message"].get("content", [])
+        content = "".join(
+            part.get("text", "")
+            for part in content_parts
+            if isinstance(part, dict)
+        )
+        usage = response.get("usage", {})
+        return content.strip(), {
+            "prompt_tokens": int(usage.get("inputTokens", 0)),
+            "completion_tokens": int(usage.get("outputTokens", 0)),
+            "total_tokens": int(usage.get("totalTokens", 0)),
+        }
+
+    @staticmethod
+    def _to_converse_messages(messages: List[Dict]) -> List[Dict[str, Any]]:
+        """Convert OpenAI-style text messages to Converse content blocks."""
+        converse_messages: List[Dict[str, Any]] = []
+        for message in messages:
+            content = message.get("content", "")
+            if not isinstance(content, str):
+                raise ValueError(
+                    "Bedrock text client does not support multimodal messages"
+                )
+            converse_messages.append({
+                "role": message.get("role", "user"),
+                "content": [{"text": content}],
+            })
+        return converse_messages
+
+
+@dataclass
+class LLMSettings:
+    """LLM connection and generation settings for one analysis run.
+
+    ``max_tokens``, ``temperature`` and ``reasoning_effort`` apply to every
+    provider. OpenRouter uses ``api_key``, ``base_url`` and ``model``.
+    Bedrock uses ``bedrock_model_id`` and ``bedrock_region``. ``api_key``
+    comes from the environment, and ``model`` may be overridden by the CLI.
+    """
+
+    provider: str
+    max_tokens: int
+    temperature: float
+    reasoning_effort: str
+    api_key: str
+    base_url: str
+    model: str
+    bedrock_model_id: str
+    bedrock_region: Optional[str]
+
+
+def create_llm_client(settings: LLMSettings) -> LLMClient:
+    """Build the client selected by ``settings.provider``."""
+    if settings.provider == "bedrock":
+        return BedrockClient(
+            model_id=settings.bedrock_model_id,
+            region=settings.bedrock_region,
+            max_tokens=settings.max_tokens,
+            temperature=settings.temperature,
+            reasoning_effort=settings.reasoning_effort,
+        )
+    if settings.provider == "openrouter":
+        return OpenRouterClient(
+            api_key=settings.api_key,
+            base_url=settings.base_url,
+            model=settings.model,
+            max_tokens=settings.max_tokens,
+            temperature=settings.temperature,
+            reasoning_effort=settings.reasoning_effort,
+        )
+    raise ValueError(f"Unsupported LLM provider: {settings.provider}")
 
 
 def _strip_code_fence(text: str) -> str:

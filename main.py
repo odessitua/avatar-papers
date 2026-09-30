@@ -256,7 +256,7 @@ def cmd_update(config: Config, table: PapersTable) -> None:
 
     cmd_search(config, table)
     cmd_download(config, table)
-    if config.openrouter_api_key.strip():
+    if config.llm_provider == "bedrock" or config.openrouter_api_key.strip():
         cmd_analyze(config, table)
     else:
         logger.info("OPENROUTER_API_KEY not set — skipping analyze step")
@@ -341,11 +341,11 @@ def cmd_analyze(
     translate: bool = True,
     model: str = None,
 ) -> None:
-    """Analyze papers via OpenRouter LLM and save EN+RU markdown."""
-    from src.llm_analyzer import LLMClient, analyze_paper
+    """Analyze papers via the configured LLM and save EN+RU markdown."""
+    from src.llm_analyzer import LLMSettings, analyze_paper, create_llm_client
 
     api_key = config.openrouter_api_key
-    if not api_key.strip():
+    if config.llm_provider == "openrouter" and not api_key.strip():
         logger.error(
             "OPENROUTER_API_KEY is not set in .env — get one at https://openrouter.ai"
         )
@@ -382,18 +382,20 @@ def cmd_analyze(
         logger.info("Nothing to analyze")
         return
 
-    logger.info(
-        "Analyze: %d paper(s) selected (model=%s, translate=%s)",
-        len(selected), model or config.llm_model, translate,
-    )
-
-    client = LLMClient(
-        api_key=api_key,
-        base_url=config.openrouter_base_url,
-        model=model or config.llm_model,
+    client = create_llm_client(LLMSettings(
+        provider=config.llm_provider,
         max_tokens=config.llm_max_tokens,
         temperature=config.llm_temperature,
         reasoning_effort=config.llm_reasoning_effort,
+        api_key=api_key,
+        base_url=config.openrouter_base_url,
+        model=model or config.llm_model,
+        bedrock_model_id=config.bedrock_model_id,
+        bedrock_region=config.bedrock_region,
+    ))
+    logger.info(
+        "Analyze: %d paper(s) selected (model=%s, translate=%s)",
+        len(selected), client.model_name, translate,
     )
 
     total_in = total_out = 0
