@@ -192,7 +192,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model", default=None,
-        help="Override LLM model slug for 'analyze' (e.g. anthropic/claude-sonnet-4.6)",
+        help="Override LLM model slug for 'analyze' (e.g. openai/gpt-6-luna)",
     )
     args = parser.parse_args()
 
@@ -393,6 +393,7 @@ def cmd_analyze(
         model=model or config.llm_model,
         max_tokens=config.llm_max_tokens,
         temperature=config.llm_temperature,
+        reasoning_effort=config.llm_reasoning_effort,
     )
 
     total_in = total_out = 0

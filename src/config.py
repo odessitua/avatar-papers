@@ -161,7 +161,7 @@ class Config:
     def llm_model(self) -> str:
         """OpenRouter model slug for paper analysis."""
         return self._data.get("openrouter", {}).get(
-            "model", "anthropic/claude-sonnet-4.6"
+            "model", "openai/gpt-6-luna"
         )
 
     @property
@@ -178,6 +178,12 @@ class Config:
     @property
     def llm_temperature(self) -> float:
         return float(self._data.get("openrouter", {}).get("temperature", 0.3))
+
+    @property
+    def llm_reasoning_effort(self) -> Optional[str]:
+        """Reasoning effort sent to OpenRouter, such as ``"medium"``."""
+        value = self._data.get("openrouter", {}).get("reasoning_effort")
+        return str(value) if value else None
 
     @property
     def pdf_max_chars(self) -> int:

@@ -161,9 +161,10 @@ class LLMClient:
         self,
         api_key: str,
         base_url: str = "https://openrouter.ai/api/v1",
-        model: str = "anthropic/claude-sonnet-4.6",
+        model: str = "openai/gpt-6-luna",
         max_tokens: int = 8000,
         temperature: float = 0.3,
+        reasoning_effort: Optional[str] = None,
     ) -> None:
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY is empty")
@@ -178,6 +179,7 @@ class LLMClient:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
 
     def chat(
         self,
@@ -192,15 +194,22 @@ class LLMClient:
         last_err: Optional[Exception] = None
         for attempt in range(1, retries + 1):
             try:
-                resp = self._client.chat.completions.create(
-                    model=model or self.model,
-                    messages=messages,
-                    max_tokens=max_tokens or self.max_tokens,
-                    temperature=(
+                request_kwargs = {
+                    "model": model or self.model,
+                    "messages": messages,
+                    "max_tokens": max_tokens or self.max_tokens,
+                    "temperature": (
                         temperature
                         if temperature is not None
                         else self.temperature
                     ),
+                }
+                if self.reasoning_effort:
+                    request_kwargs["extra_body"] = {
+                        "reasoning": {"effort": self.reasoning_effort}
+                    }
+                resp = self._client.chat.completions.create(
+                    **request_kwargs,
                 )
                 choice = resp.choices[0]
                 content = choice.message.content or ""
