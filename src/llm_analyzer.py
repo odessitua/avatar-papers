@@ -464,7 +464,7 @@ def analyze_paper(
 
     logger.info(
         "Analyzing %s — calling %s (pdf_chars=%d, figures=%d)",
-        arxiv_id, client.model, len(pdf_text), len(figures),
+        arxiv_id, client.model_name, len(pdf_text), len(figures),
     )
     en_md, en_usage = client.chat(messages)
     en_md = _strip_code_fence(en_md)
