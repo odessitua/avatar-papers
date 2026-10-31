@@ -5,8 +5,8 @@ Helper scripts. Core commands live in `main.py`.
 Use absolute paths in crontab (adjust `PROJECT_DIR`):
 
 ```
-0 22 * * * /path/to/avatar-papers/scripts/daily_update.sh
-0 9 * * 4 /path/to/avatar-papers/scripts/weekly_slack.sh
+0 22 * * * /path/to/ai-dev-papers/scripts/daily_update.sh
+0 9 * * 4 /path/to/ai-dev-papers/scripts/weekly_slack.sh
 ```
 
 Shell scripts activate `.venv` in the project root if present; otherwise conda

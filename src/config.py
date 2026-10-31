@@ -126,6 +126,12 @@ class Config:
         )
 
     @property
+    def confluence_title_marker(self) -> str:
+        """Prefix for year and week page titles. Blank keeps the bare titles."""
+        value = self._data.get("confluence", {}).get("title_marker", "")
+        return str(value).strip() if value else ""
+
+    @property
     def publish_state_file(self) -> str:
         return self._data.get("paths", {}).get(
             "publish_state", "data/publish_state.json"

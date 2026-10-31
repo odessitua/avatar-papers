@@ -2,53 +2,66 @@ arxiv:
   max_results_per_topic: 200
   sort_by: "submitted"       # "submitted" or "updated"
   search_field: "abs"        # "ti" (title), "abs" (abstract), "all" (all fields)
-  # Lower bound for submittedDate (YYYY-MM-DD). Update to "today" for freshest results.
-  date_from: "2026-03-23"
+  # Lower bound for submittedDate (YYYY-MM-DD). Backfill older quarters with --date-from/--date-to.
+  date_from: "2025-01-01"
   # date_to: "2026-12-31"    # optional; omit for open-ended range (newest submissions)
   categories:
+    - "cs.SE"
+    - "cs.AI"
+    - "cs.CL"
+    - "cs.HC"
+    - "cs.GR"
     - "cs.CV"
     - "cs.MM"
-    - "cs.GR"
-    - "cs.AI"
-    - "cs.LG"
-    - "cs.SD"
-    - "eess.IV"
-    - "eess.AS"
 
+# Group order is priority when a paper matches more than one group.
+# Process groups come before feature groups; the broadest group in each family is last.
 keywords:
-  talking_head:
-    - "Talking Face"
-    - "Talking Head"
-    - "Talking Avatar"
-    - "Talking Video"
-    - "Visual Dubbing"
-  lip_sync:
-    - "Lip Sync"
-    - "Wav2Lip"
-    - "Lip Generation"
-    - "Lip Synchronization"
-    - "Lip Expert"
-  portrait_animation:
-    - "Portrait Animation"
-    - "Animate Portrait"
-  face_reenactment:
-    - "Face Reenactment"
-    - "Face Generation"
-    - "Facial Animation"
-    - "Head Synthesis"
-  image_animation:
-    - "Image Animator"
-    - "Image Animation"
-  face_reconstruction:
-    - "3D Face Reconstruction"
-    - "3D Head Reconstruction"
-    - "3D Morphable Model"
-    - "3DMM"
-    - "FLAME face model"
-    - "Neural Parametric Head"
-    - "Head Avatar Reconstruction"
-    - "Gaussian Head Avatar"
-    - "Face Geometry"
+  coding_agents:
+    - "coding agent"
+    - "agentic coding"
+    - "software engineering agent"
+    - "SWE-bench"
+    - "issue resolution"
+    - "repository-level code generation"
+  spec_review_verify:
+    - "code review agent"
+    - "test generation agent"
+    - "specification-driven development"
+    - "requirements to code"
+    - "software verification agent"
+  repo_context:
+    - "repository context"
+    - "codebase understanding"
+    - "context engineering"
+    - "retrieval-augmented code generation"
+  human_ai_workflow:
+    - "AI-assisted programming"
+    - "AI pair programming"
+    - "human-AI programming"
+    - "vibe coding"
+  chart_generation:
+    - "text-to-visualization"
+    - "natural language to visualization"
+    - "chart generation"
+    - "visualization generation"
+    - "data video"
+  text_motion:
+    - "kinetic typography"
+    - "text animation"
+    - "animated text"
+    - "motion graphics generation"
+  screen_video:
+    - "screen recording"
+    - "screencast"
+    - "tutorial video generation"
+    - "presentation video generation"
+    - "demo video generation"
+  gui_agents:
+    - "GUI agent"
+    - "computer-use agent"
+    - "web agent"
+    - "GUI grounding"
 
 paths:
   csv_file: "data/papers.csv"
@@ -86,7 +99,8 @@ bedrock:
 confluence:
   space_key: "YOUR_SPACE_KEY"
   parent_page_id: "YOUR_PARENT_PAGE_ID"
-  papers_page_title: "Papers"
-  ru_page_title: "RU"
-  prompt_page_title: "Analysis Prompt"
-  keywords_page_title: "Search Keywords"
+  papers_page_title: "papers-ai-dev"
+  ru_page_title: "RU · AI Dev"
+  prompt_page_title: "Analysis Prompt · AI Dev"
+  keywords_page_title: "Search Keywords · AI Dev"
+  title_marker: "AI Dev"

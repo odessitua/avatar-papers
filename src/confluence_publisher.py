@@ -8,12 +8,14 @@ from atlassian import Confluence  # type: ignore[import-untyped]
 
 from src.config import Config
 from src.csv_manager import PapersTable, parse_tags
+from src.llm_analyzer import load_prompt_page_markdown
 from src.md_to_confluence import (
     build_index_html,
     build_keywords_html,
     build_papers_table_html,
     build_weekly_page_html,
-    format_weekly_title,
+    format_week_page_title,
+    format_year_title,
     md_to_confluence_storage,
 )
 from src.publish_state import PublishState
@@ -30,17 +32,14 @@ class ConfluencePublisher:
     """Publishes papers table and weekly analyses to Confluence.
 
     Confluence page hierarchy:
-        Papers (index — year links + reference links)
-        ├── Analysis Prompt
-        ├── Search Keywords
-        ├── 2026 (year page — papers table)
-        │   ├── Feb 16 - Feb 22 (EN weekly)
-        │   ├── Feb 16 - Feb 22 (RU) (RU weekly)
-        │   └── ...
-        └── ...
-        RU (index — year links)
-        ├── 2026 (RU) (year page — papers table with RU links)
-        └── ...
+        papers-ai-dev (index — year links + reference links)
+        ├── Analysis Prompt · AI Dev
+        ├── Search Keywords · AI Dev
+        ├── 2026 · AI Dev (year page — papers table)
+        │   ├── AI Dev: Feb 16 - Feb 22, 2026
+        │   └── AI Dev: Feb 16 - Feb 22, 2026 (RU)
+        └── RU · AI Dev
+            └── 2026 · AI Dev (RU)
     """
 
     def __init__(self, config: Config, force: bool = False) -> None:
@@ -109,7 +108,7 @@ class ConfluencePublisher:
         if prompt_page:
             prompt_id = str(prompt_page["id"])
         else:
-            prompt_md = Path("prompts/analyze_paper.md").read_text(encoding="utf-8")
+            prompt_md = load_prompt_page_markdown()
             prompt_html = md_to_confluence_storage(prompt_md)
             prompt_id = self._find_or_create(
                 prompt_title, self._papers_page_id, body=prompt_html
@@ -164,8 +163,10 @@ class ConfluencePublisher:
 
         Returns (en_year_page_id, ru_year_page_id).
         """
-        en_year_title = year
-        ru_year_title = f"{year} (RU)"
+        en_year_title = format_year_title(year, self.config.confluence_title_marker)
+        ru_year_title = format_year_title(
+            year, self.config.confluence_title_marker, ru=True
+        )
 
         weeks = _group_by_week(year_df)
         canonical_weeks = [
@@ -278,9 +279,13 @@ class ConfluencePublisher:
         if processed.empty:
             return
 
-        week_title = format_weekly_title(w_start, w_end)
+        week_title = format_week_page_title(
+            w_start, w_end, self.config.confluence_title_marker
+        )
         en_title = week_title
-        ru_title = f"{week_title} (RU)"
+        ru_title = format_week_page_title(
+            w_start, w_end, self.config.confluence_title_marker, ru=True
+        )
 
         en_html = build_weekly_page_html(
             processed, self.config.analysis_dir, w_start, w_end
@@ -342,6 +347,8 @@ class ConfluencePublisher:
             year_stats,
             prompt_url=self._prompt_page_url,
             keywords_url=self._keywords_page_url,
+            prompt_title=self.config.confluence_prompt_page_title,
+            keywords_title=self.config.confluence_keywords_page_title,
         )
         content_hash = PublishState.content_hash(html)
 

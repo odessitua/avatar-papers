@@ -135,7 +135,7 @@ def _rebuild_db(config: Config, table: PapersTable) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Avatar Papers — arXiv paper collector and publisher"
+        description="AI Dev Papers — arXiv paper collector and publisher"
     )
     parser.add_argument(
         "command",
@@ -411,6 +411,7 @@ def cmd_analyze(
                     "date": row.get("date", ""),
                     "authors": row.get("authors", ""),
                     "code_url": row.get("code_url", ""),
+                    "topic": row.get("topic", ""),
                 },
                 originals_dir=originals_dir,
                 figures_dir=figures_dir,

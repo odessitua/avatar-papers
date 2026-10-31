@@ -9,15 +9,18 @@ import pandas as pd  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
-# Emoji per topic (config keyword key). Used in papers table.
-TOPIC_EMOJI = {
-    "talking_head": "🗣️",
-    "lip_sync": "👄",
-    "portrait_animation": "🖼️",
-    "face_reenactment": "🎭",
-    "image_animation": "🎬",
-    "face_reconstruction": "🧊",
+# Family and emoji for each search group. Slack reads the emoji half.
+TOPIC_META = {
+    "coding_agents": ("process", "🤖"),
+    "spec_review_verify": ("process", "📋"),
+    "repo_context": ("process", "📚"),
+    "human_ai_workflow": ("process", "🤝"),
+    "chart_generation": ("feature", "📊"),
+    "text_motion": ("feature", "✨"),
+    "screen_video": ("feature", "🎬"),
+    "gui_agents": ("feature", "🖱️"),
 }
+TOPIC_EMOJI = {key: emoji for key, (_family, emoji) in TOPIC_META.items()}
 
 
 _IMG_RE = re.compile(r'<img\s+[^>]*src="([^"]+)"[^>]*/?>') 
@@ -149,10 +152,52 @@ def format_weekly_title(w_start: str, w_end: str) -> str:
     )
 
 
+def format_year_title(year: str, marker: str, ru: bool = False) -> str:
+    """Year page title. A blank marker keeps the bare year."""
+    marker = (marker or "").strip()
+    if not marker:
+        return f"{year} (RU)" if ru else year
+    if ru:
+        return f"{year} · {marker} (RU)"
+    return f"{year} · {marker}"
+
+
+def format_week_page_title(
+    w_start: str, w_end: str, marker: str, ru: bool = False
+) -> str:
+    """Week page title. A blank marker keeps the calendar span."""
+    base = format_weekly_title(w_start, w_end)
+    marker = (marker or "").strip()
+    title = f"{marker}: {base}" if marker else base
+    return f"{title} (RU)" if ru else title
+
+
+def format_topic_cell(topic: str) -> str:
+    """Return the year-table Topic cell: optional emoji plus family and group.
+
+    An unknown group is returned as the raw key, and a warning is logged,
+    because the Confluence cell is required to name the family.
+    """
+    topic = (topic or "").strip()
+    if not topic:
+        return ""
+    meta = TOPIC_META.get(topic)
+    if meta is None:
+        logger.warning("No topic metadata for %r; Topic cell has no family", topic)
+        return topic
+    family, emoji = meta
+    label = f"{family} · {topic}"
+    if emoji:
+        return f"{emoji} {label}"
+    return label
+
+
 def build_index_html(
     year_stats: Dict[str, Tuple[int, int, str]],
     prompt_url: Optional[str] = None,
     keywords_url: Optional[str] = None,
+    prompt_title: str = "Analysis Prompt",
+    keywords_title: str = "Search Keywords",
 ) -> str:
     """Build the main Papers index page with year links.
 
@@ -160,9 +205,11 @@ def build_index_html(
     """
     ref_links: List[str] = []
     if prompt_url:
-        ref_links.append(f'<a href="{prompt_url}">Analysis Prompt</a>')
+        ref_links.append(f'<a href="{prompt_url}">{_escape(prompt_title)}</a>')
     if keywords_url:
-        ref_links.append(f'<a href="{keywords_url}">Search Keywords</a>')
+        ref_links.append(
+            f'<a href="{keywords_url}">{_escape(keywords_title)}</a>'
+        )
 
     parts: List[str] = []
     if ref_links:
@@ -224,11 +271,13 @@ def _compute_week_links(
 def build_papers_table_html(
     df: pd.DataFrame,
     base_url: str = "",
-    prompt_url: Optional[str] = None,
-    keywords_url: Optional[str] = None,
     week_urls: Optional[Dict[str, str]] = None,
 ) -> str:
-    """Build an HTML table from the papers DataFrame for Confluence."""
+    """Build an HTML table from the papers DataFrame for Confluence.
+
+    Reference links to the prompt and keywords pages live on the index.
+    Year pages only add current-week and last-week links.
+    """
     rows: List[str] = []
     for _, r in df.iterrows():
         title_link = f'<a href="{r["url"]}">{_escape(r["title"])}</a>'
@@ -250,7 +299,7 @@ def build_papers_table_html(
             f"<td>{r['date']}</td>"
             f"<td>{title_link}</td>"
             f"<td>{_escape(r.get('authors', ''))}</td>"
-            f"<td>{_topic_with_emoji(r.get('topic', ''))}</td>"
+            f"<td>{format_topic_cell(str(r.get('topic', '') or ''))}</td>"
             f"<td>{score_cell}</td>"
             f"<td>{code_cell}</td>"
             f"<td>{analysis_cell}</td>"
@@ -269,13 +318,7 @@ def build_papers_table_html(
         "</tr>"
     )
 
-    ref_links: List[str] = []
-    if prompt_url:
-        ref_links.append(f'<a href="{prompt_url}">Analysis Prompt</a>')
-    if keywords_url:
-        ref_links.append(f'<a href="{keywords_url}">Search Keywords</a>')
-    week_link_items = _compute_week_links(df, week_urls)
-    ref_links.extend(week_link_items)
+    ref_links = _compute_week_links(df, week_urls)
     ref_line = " | ".join(ref_links)
     header_html = f"<p>Total papers: {len(df)}"
     if ref_line:
@@ -388,13 +431,6 @@ def build_weekly_page_html(
 def _remove_first_h1(html: str) -> str:
     """Remove the first <h1>...</h1> tag to avoid duplicate titles."""
     return re.sub(r"<h1[^>]*>.*?</h1>", "", html, count=1, flags=re.DOTALL)
-
-
-def _topic_with_emoji(topic: str) -> str:
-    """Return only emoji for table display; unknown topic as-is."""
-    if not topic:
-        return ""
-    return TOPIC_EMOJI.get(topic, topic)
 
 
 def _escape(text: str) -> str:

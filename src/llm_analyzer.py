@@ -25,15 +25,47 @@ from openai import APIError, APITimeoutError, RateLimitError  # type: ignore[imp
 logger = logging.getLogger(__name__)
 
 
-PROMPT_TEMPLATE_PATH = Path("prompts/analyze_paper.md")
+PROMPTS_DIR = Path("prompts")
+TRACK_NAMES = ("process", "feature")
 
 
-def _load_prompt_template() -> str:
-    if not PROMPT_TEMPLATE_PATH.exists():
-        raise FileNotFoundError(
-            f"Prompt template not found: {PROMPT_TEMPLATE_PATH}"
+def _read_prompt(path: Path) -> str:
+    """Read one prompt file or raise if it is missing."""
+    if not path.is_file():
+        raise FileNotFoundError(f"Prompt file not found: {path}")
+    return path.read_text(encoding="utf-8").strip()
+
+
+def load_analysis_prompt(topic: str) -> str:
+    """Assemble shared instructions, the group lens, and both track sections.
+
+    A missing lens is omitted. Both tracks are always included so the model
+    can choose the body from the paper rather than from the search group.
+    """
+    parts = [_read_prompt(PROMPTS_DIR / "shared.md")]
+    lens = PROMPTS_DIR / "groups" / f"{topic}.md"
+    if lens.is_file():
+        parts.append(_read_prompt(lens))
+    else:
+        logger.warning(
+            "No group lens for topic %r; continuing with both tracks", topic
         )
-    return PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
+    for name in TRACK_NAMES:
+        parts.append(_read_prompt(PROMPTS_DIR / "tracks" / f"{name}.md"))
+    return "\n\n".join(parts)
+
+
+def load_prompt_page_markdown() -> str:
+    """Return the prompt page: the same pieces, with a heading per file."""
+    sections = [("# shared", PROMPTS_DIR / "shared.md")]
+    for name in TRACK_NAMES:
+        sections.append((f"# tracks/{name}", PROMPTS_DIR / "tracks" / f"{name}.md"))
+    groups_dir = PROMPTS_DIR / "groups"
+    for path in sorted(groups_dir.glob("*.md")):
+        sections.append((f"# groups/{path.stem}", path))
+    return "\n\n".join(
+        f"{heading}\n\n{_read_prompt(path)}" for heading, path in sections
+    )
 
 
 def extract_pdf_text(pdf_path: Path, max_chars: int = 120000) -> str:
@@ -100,9 +132,9 @@ def build_analysis_messages(
 ) -> List[Dict]:
     """Build chat messages for the EN analysis call."""
     figures_block = _format_figures_block(figures)
-    user = f"""You are an expert ML researcher producing structured Markdown analyses of academic papers.
+    user = f"""You are analyzing one arXiv paper for a team that organizes software development with AI and ships AI product features.
 
-Follow the analysis instructions and template below. Output ONLY the final Markdown content
+Follow the assembled instructions below. Output ONLY the final Markdown content
 (no preamble, no code fences around the whole document — just the Markdown itself).
 
 === ANALYSIS INSTRUCTIONS AND TEMPLATE ===
@@ -116,12 +148,11 @@ Follow the analysis instructions and template below. Output ONLY the final Markd
 - authors: {authors}
 - code_url (from CSV): {code_url or "(empty — discover from paper if present)"}
 
-=== AVAILABLE FIGURES (pick ONE that best illustrates the model architecture/pipeline) ===
+=== AVAILABLE FIGURES (pick at most one) ===
 {figures_block}
 
-When you fill in the `![architecture]({{url}})` line, use the `url` value of the figure
-whose caption best matches "architecture", "pipeline", "framework overview" or "model structure".
-If none of the figures look architectural, omit the architecture image line entirely.
+Choose the figure using the rule in the track you write. Use its `url` in `![figure](url)`.
+If no caption fits that track, omit the image line entirely.
 
 === PAPER TEXT (extracted from PDF) ===
 {pdf_text}
@@ -145,9 +176,11 @@ Strict rules:
 - Translate ONLY natural language text. Do NOT translate:
   - arxiv_id, URLs, hyperlink targets
   - tag values in the `## Tags` section (keep them as-is in English)
-  - method names, model names, dataset names, metric names (e.g. SadTalker, HDTF, FID, Sync-C)
+  - method names, model names, dataset names, metric names (e.g. SWE-bench, SWE-agent, nvBench, pass@1)
+  - the `Track` value and the `Where it fits` value
   - inline code, formulas, variable names
 - Keep the `## Recommendation: N/10` line exactly as-is.
+- Keep the `Track` line value exactly as-is (`process` or `feature`).
 - Translate the Tags SECTION HEADING but keep the actual tag values untranslated (still hyphenated, English).
 - Output the Russian Markdown only, no preamble, no code fences around the whole document.
 
@@ -261,7 +294,7 @@ class OpenRouterClient(LLMClient):
             base_url=base_url,
             default_headers={
                 "HTTP-Referer": "https://github.com/avatar-papers",
-                "X-Title": "Avatar Papers Analyzer",
+                "X-Title": "AI Dev Papers Analyzer",
             },
         )
 
@@ -448,7 +481,8 @@ def analyze_paper(
     logger.info("Analyzing %s — extracting PDF text", arxiv_id)
     pdf_text = extract_pdf_text(pdf_path, max_chars=pdf_max_chars)
     figures = load_figures(figures_path)
-    template = _load_prompt_template()
+    topic = str(paper_meta.get("topic") or "")
+    template = load_analysis_prompt(topic)
 
     messages = build_analysis_messages(
         template,

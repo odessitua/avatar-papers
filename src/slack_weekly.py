@@ -117,7 +117,7 @@ def build_weekly_report(
 ) -> str:
     """Build a plain-text weekly report for Slack (title, link, score, summary per paper)."""
     lines: List[str] = []
-    lines.append(f"*Papers: {w_start} — {w_end}* ({len(week_df)} papers)\n")
+    lines.append(f"*AI Dev Papers: {w_start} — {w_end}* ({len(week_df)} papers)\n")
 
     for _, row in week_df.iterrows():
         arxiv_id = row["arxiv_id"]
@@ -163,7 +163,7 @@ def build_weekly_report_blocks(
     if min_score > 0:
         subtitle += f" (score ≥ {min_score})"
     subtitle += "\n"
-    header_text = f"Papers: {w_start} — {w_end}"
+    header_text = f"AI Dev Papers: {w_start} — {w_end}"
     if confluence_week_url and confluence_week_url.strip():
         header_mrkdwn = f"*<{confluence_week_url.strip()}|{header_text}>*"
         header_block: Dict = {"type": "section", "text": {"type": "mrkdwn", "text": header_mrkdwn}}

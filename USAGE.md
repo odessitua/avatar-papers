@@ -1,4 +1,4 @@
-# Avatar Papers — Usage Guide
+# AI Dev Papers — Usage Guide
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@
    SLACK_CHANNEL=#your-channel
    ```
 
-3. `config.yaml` — copy from `config.yaml.example`, then set search keywords, arXiv `date_from` (use today for newest papers), categories, and Confluence `space_key` / `parent_page_id`.
+3. `config.yaml` — copy from `config.yaml.example`. Default search covers two families from `2025-01-01`: development process (`coding_agents`, `spec_review_verify`, `repo_context`, `human_ai_workflow`) and product features (`chart_generation`, `text_motion`, `screen_video`, `gui_agents`). Categories are `cs.SE`, `cs.AI`, `cs.CL`, `cs.HC`, `cs.GR`, `cs.CV`, and `cs.MM`. Set Confluence `space_key` and `parent_page_id`.
 
 ---
 
@@ -38,15 +38,16 @@ python main.py update
 
 Best used as a daily cron job (see `scripts/daily_update.sh`):
 ```
-0 22 * * * /path/to/avatar-papers/scripts/daily_update.sh
+0 22 * * * /path/to/ai-dev-papers/scripts/daily_update.sh
 ```
 
 ---
 
 ### `search` — Search arXiv for papers
 
-Searches arXiv using keywords from `config.yaml` and adds new papers to
-`data/papers.csv`. Uses `date_from` / `date_to` from config unless overridden.
+Searches arXiv using the eight keyword groups in `config.yaml` and adds new papers to `data/papers.csv`. Process groups are queried before feature groups. A paper that matches more than one group is stored once, under the first group. Uses `date_from` / `date_to` from config unless overridden. The default window starts on 2025-01-01.
+
+Each run returns at most `max_results_per_topic` papers per group (200). Backfill older quarters with `--date-from` and `--date-to`, newest quarter first, instead of raising that limit.
 
 ```bash
 # Use dates from config.yaml
@@ -134,7 +135,7 @@ python main.py slack-weekly --week last --min-score 6
 
 Run once per week via cron (see `scripts/weekly_slack.sh`):
 ```
-0 9 * * 4 /path/to/avatar-papers/scripts/weekly_slack.sh
+0 9 * * 4 /path/to/ai-dev-papers/scripts/weekly_slack.sh
 ```
 
 ---
@@ -155,8 +156,11 @@ python main.py collect --date-from 2025-07-01 --date-to 2025-09-30
 ### Initial backfill (historical data)
 
 ```bash
-# Search by quarter, newest first
-python main.py search --date-from 2026-01-01 --date-to 2026-03-04
+# Search by quarter, newest first, from the current quarter back to 2025-01-01
+python main.py search --date-from 2026-10-01 --date-to 2026-12-31
+python main.py search --date-from 2026-07-01 --date-to 2026-09-30
+python main.py search --date-from 2026-04-01 --date-to 2026-06-30
+python main.py search --date-from 2026-01-01 --date-to 2026-03-31
 python main.py search --date-from 2025-10-01 --date-to 2025-12-31
 python main.py search --date-from 2025-07-01 --date-to 2025-09-30
 python main.py search --date-from 2025-04-01 --date-to 2025-06-30
@@ -172,14 +176,14 @@ python main.py publish
 ### Daily operation (cron)
 
 ```
-0 22 * * * /path/to/avatar-papers/scripts/daily_update.sh
-0 9 * * 4 /path/to/avatar-papers/scripts/weekly_slack.sh
+0 22 * * * /path/to/ai-dev-papers/scripts/daily_update.sh
+0 9 * * 4 /path/to/ai-dev-papers/scripts/weekly_slack.sh
 ```
 
 ### After analyzing papers
 
 ```bash
-# 1. Analyze papers using the prompt in prompts/analyze_paper.md
+# 1. Analyze with `python main.py analyze` (prompts/shared.md plus the group lens and both tracks)
 #    Save EN analysis to papers/analysis/{arxiv_id}.md
 #    Save RU translation to papers/analysis_ru/{arxiv_id}.md
 
@@ -195,20 +199,17 @@ python main.py publish
 ## Confluence Page Structure
 
 ```
-Papers (index — year links)
-├── Analysis Prompt
-├── Search Keywords
-├── 2026 (papers table for 2026)
-│   ├── Feb 16 - Feb 22 (EN weekly analysis)
-│   ├── Feb 16 - Feb 22 (RU)
-│   ├── Feb 23 - Mar 01
-│   └── Feb 23 - Mar 01 (RU)
-├── 2025 (papers table for 2025)
-│   └── ...
-└── RU
-    ├── 2026 (RU) (same table, RU analysis links)
-    └── 2025 (RU)
+papers-ai-dev
+├── Analysis Prompt · AI Dev
+├── Search Keywords · AI Dev
+├── 2026 · AI Dev
+│   ├── AI Dev: Feb 16 - Feb 22, 2026
+│   └── AI Dev: Feb 16 - Feb 22, 2026 (RU)
+└── RU · AI Dev
+    └── 2026 · AI Dev (RU)
 ```
+
+The year table Topic cell reads `process · coding_agents` or `feature · chart_generation`. An emoji may sit in front of those words.
 
 ---
 
