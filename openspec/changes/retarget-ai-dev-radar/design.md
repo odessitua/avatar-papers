@@ -14,7 +14,7 @@ Confluence root, RU, prompt, and keywords titles are config fields. Year titles 
 
 - One feed with two topic families, driven by config.
 - One assembled request per paper: shared instructions, the group's lens, and both tracks. The model writes one track. The four machine-read fields stay unchanged.
-- The year-table Topic cell reads as `process · {group}` or `feature · {group}`.
+- The year-table Topic cell shows a family mark and a group mark. A legend above the table names them.
 - Year and week titles that match the confluence-page-tree spec when the marker is `AI Dev`.
 
 **Non-Goals:**
@@ -58,7 +58,7 @@ Add `confluence.title_marker: "AI Dev"` and set the existing title fields:
 
 | Field | Value |
 | --- | --- |
-| `papers_page_title` | `papers-ai-dev` |
+| `papers_page_title` | `Papers AI Development` |
 | `ru_page_title` | `RU · AI Dev` |
 | `prompt_page_title` | `Analysis Prompt · AI Dev` |
 | `keywords_page_title` | `Search Keywords · AI Dev` |
@@ -154,7 +154,7 @@ Bands for both tracks: 9–10 change something this month, 7–8 worth reading t
 
 Keep the headings exactly as named, the tags as one line directly after the heading, and the summary as one paragraph. Those are what the parsers read. `Track` stays in the analysis and is not a CSV column. The CSV `topic` stays the search group.
 
-The year-table Topic cell is built in `src/md_to_confluence.py` from that group. Process groups render `process · {topic}`; feature groups render `feature · {topic}`. An emoji may prefix the words. Slack can keep using the emoji alone.
+The year-table Topic cell is built in `src/md_to_confluence.py` from that group. The cell shows ⚙️ or 🎯 plus the group emoji, with the short name in a title hint. A legend above the table is two nested lists: each family mark is explained, then its group marks. Slack can keep using the emoji alone.
 
 `build_analysis_messages` tells the model to follow the assembled template, pick the figure by the track it writes, and omit the image when none fits. `build_translation_messages` keeps tag values, the score line, the `Track` and fit values, URLs, and names such as SWE-bench and nvBench untranslated. Remove SadTalker, FID, and Sync-C examples.
 
@@ -193,5 +193,5 @@ Alternative: a `papers-ai-dev/` local directory. Rejected: that name is the Conf
 2. Ship the prompt files, the router, LLM messages, title construction, topic labels, and user-facing strings on `ai-development`.
 3. If this worktree's CSV or publish state has avatar rows, replace them with empty files.
 4. Search by quarter from the current quarter back to 2025-01-01, then download and analyze.
-5. First `publish` creates `papers-ai-dev` and its children without touching the avatar tree.
-6. Rollback is reverting this branch. Pages under `papers-ai-dev` can stay.
+5. First `publish` creates `Papers AI Development` and its children without touching the avatar tree.
+6. Rollback is reverting this branch. Pages under `Papers AI Development` can stay.

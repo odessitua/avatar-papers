@@ -199,7 +199,7 @@ python main.py publish
 ## Confluence Page Structure
 
 ```
-papers-ai-dev
+Papers AI Development
 ├── Analysis Prompt · AI Dev
 ├── Search Keywords · AI Dev
 ├── 2026 · AI Dev
@@ -209,7 +209,7 @@ papers-ai-dev
     └── 2026 · AI Dev (RU)
 ```
 
-The year table Topic cell reads `process · coding_agents` or `feature · chart_generation`. An emoji may sit in front of those words.
+The year table Topic cell is two icons: a family mark and the group mark. A legend above the table is two lists. ⚙️ process is how software is built with AI. 🎯 feature is a product capability. Each list names the group marks under that family. Hovering a cell shows the short group name.
 
 ---
 

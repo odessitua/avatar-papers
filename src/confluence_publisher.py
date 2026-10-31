@@ -32,7 +32,7 @@ class ConfluencePublisher:
     """Publishes papers table and weekly analyses to Confluence.
 
     Confluence page hierarchy:
-        papers-ai-dev (index — year links + reference links)
+        Papers AI Development (index — year links + reference links)
         ├── Analysis Prompt · AI Dev
         ├── Search Keywords · AI Dev
         ├── 2026 · AI Dev (year page — papers table)

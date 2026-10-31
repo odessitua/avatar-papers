@@ -99,7 +99,7 @@ bedrock:
 confluence:
   space_key: "YOUR_SPACE_KEY"
   parent_page_id: "YOUR_PARENT_PAGE_ID"
-  papers_page_title: "papers-ai-dev"
+  papers_page_title: "Papers AI Development"
   ru_page_title: "RU · AI Dev"
   prompt_page_title: "Analysis Prompt · AI Dev"
   keywords_page_title: "Search Keywords · AI Dev"

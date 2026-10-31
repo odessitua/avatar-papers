@@ -9,18 +9,29 @@ import pandas as pd  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
-# Family and emoji for each search group. Slack reads the emoji half.
+# Family, emoji, and short legend label for each search group.
+# Slack reads the emoji. The year table shows marks, not the group key.
 TOPIC_META = {
-    "coding_agents": ("process", "🤖"),
-    "spec_review_verify": ("process", "📋"),
-    "repo_context": ("process", "📚"),
-    "human_ai_workflow": ("process", "🤝"),
-    "chart_generation": ("feature", "📊"),
-    "text_motion": ("feature", "✨"),
-    "screen_video": ("feature", "🎬"),
-    "gui_agents": ("feature", "🖱️"),
+    "coding_agents": ("process", "🤖", "agents"),
+    "spec_review_verify": ("process", "📋", "spec"),
+    "repo_context": ("process", "📚", "context"),
+    "human_ai_workflow": ("process", "🤝", "workflow"),
+    "chart_generation": ("feature", "📊", "charts"),
+    "text_motion": ("feature", "✨", "text"),
+    "screen_video": ("feature", "🎬", "screen"),
+    "gui_agents": ("feature", "🖱️", "gui"),
 }
-TOPIC_EMOJI = {key: emoji for key, (_family, emoji) in TOPIC_META.items()}
+TOPIC_EMOJI = {key: emoji for key, (_family, emoji, _label) in TOPIC_META.items()}
+
+# Family mark shown beside the group emoji. The legend explains the mark.
+FAMILY_MARK = {
+    "process": "⚙️",
+    "feature": "🎯",
+}
+FAMILY_BLURB = {
+    "process": "how software is built with AI",
+    "feature": "a product capability for end users",
+}
 
 
 _IMG_RE = re.compile(r'<img\s+[^>]*src="([^"]+)"[^>]*/?>') 
@@ -173,10 +184,10 @@ def format_week_page_title(
 
 
 def format_topic_cell(topic: str) -> str:
-    """Return the year-table Topic cell: optional emoji plus family and group.
+    """Return the year-table Topic cell as family and group marks.
 
-    An unknown group is returned as the raw key, and a warning is logged,
-    because the Confluence cell is required to name the family.
+    The visible cell is two icons. The readable name is a ``title`` hint.
+    An unknown group is returned as the raw key, and a warning is logged.
     """
     topic = (topic or "").strip()
     if not topic:
@@ -184,12 +195,34 @@ def format_topic_cell(topic: str) -> str:
     meta = TOPIC_META.get(topic)
     if meta is None:
         logger.warning("No topic metadata for %r; Topic cell has no family", topic)
-        return topic
-    family, emoji = meta
-    label = f"{family} · {topic}"
-    if emoji:
-        return f"{emoji} {label}"
-    return label
+        return _escape(topic)
+    family, emoji, label = meta
+    family_mark = FAMILY_MARK.get(family, "")
+    return f'<span title="{_escape(label)}">{family_mark}{emoji}</span>'
+
+
+def format_topic_legend() -> str:
+    """Return the grouped icon key printed above the year table.
+
+    Two nested lists. The parent of each list names the family mark and
+    what it means. The children name the group marks in that family.
+    """
+    groups: List[str] = []
+    for family in ("process", "feature"):
+        family_mark = FAMILY_MARK[family]
+        blurb = FAMILY_BLURB[family]
+        items: List[str] = []
+        for _key, (group_family, emoji, label) in TOPIC_META.items():
+            if group_family != family:
+                continue
+            items.append(f"<li>{emoji} {_escape(label)}</li>")
+        groups.append(
+            "<li>"
+            f"<strong>{family_mark} {_escape(family)}</strong> — {_escape(blurb)}"
+            f"<ul>{''.join(items)}</ul>"
+            "</li>"
+        )
+    return f"<ul>{''.join(groups)}</ul>"
 
 
 def build_index_html(
@@ -324,6 +357,7 @@ def build_papers_table_html(
     if ref_line:
         header_html += f" &nbsp;|&nbsp; {ref_line}"
     header_html += "</p>"
+    header_html += format_topic_legend()
 
     # Column widths (%). Title widest; Date/Authors/Topic small; Score/Code/Analysis tiny.
     colgroup = (

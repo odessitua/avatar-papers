@@ -7,11 +7,11 @@ Defines the Confluence page tree for this radar so it can sit in the same space 
 ## ADDED Requirements
 
 ### Requirement: Sibling root page
-Publishing MUST create or reuse a page titled `papers-ai-dev` under the configured parent page. Publishing MUST NOT update the avatar `Papers` page or its children.
+Publishing MUST create or reuse a page titled `Papers AI Development` under the configured parent page. Publishing MUST NOT update the avatar `Papers` page or its children.
 
 #### Scenario: First publish
-- **WHEN** publish runs and no `papers-ai-dev` page exists under the configured parent
-- **THEN** a page titled `papers-ai-dev` is created under that parent
+- **WHEN** publish runs and no `Papers AI Development` page exists under the configured parent
+- **THEN** a page titled `Papers AI Development` is created under that parent
 
 #### Scenario: Avatar tree stays unchanged
 - **WHEN** publish runs
@@ -36,18 +36,20 @@ The Russian index, prompt page, keywords page, year pages, and week pages MUST u
 - **AND** the Russian index title is `RU · AI Dev`
 
 ### Requirement: Topic cell names the group
-The year-table Topic cell MUST show the family and the group key, as `process · {group}` or `feature · {group}`. The cell MUST include those words. An emoji may sit beside them.
+The year-table Topic cell MUST show the family mark and the group mark, and MUST NOT show the group key or the words `process` and `feature`. A legend above the table MUST be a grouped list. It MUST explain the family mark and name each group mark under that family. Process uses ⚙️. Feature uses 🎯.
 
 #### Scenario: Process group
 - **WHEN** a year-table row has topic `coding_agents`
-- **THEN** its Topic cell contains `process · coding_agents`
+- **THEN** its Topic cell contains ⚙️ and 🤖
+- **AND** the cell does not contain `coding_agents`
 
 #### Scenario: Feature group
 - **WHEN** a year-table row has topic `chart_generation`
-- **THEN** its Topic cell contains `feature · chart_generation`
+- **THEN** its Topic cell contains 🎯 and 📊
+- **AND** the cell does not contain `chart_generation`
 
 ### Requirement: Index points at this tree
-The `papers-ai-dev` index MUST link to this radar's year pages, prompt page, and keywords page.
+The `Papers AI Development` index MUST link to this radar's year pages, prompt page, and keywords page.
 
 #### Scenario: Index update
 - **WHEN** publish updates the index
